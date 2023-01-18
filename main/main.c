@@ -7,6 +7,7 @@
 #include "freertos/task.h"
 #include "esp_system.h"
 #include "esp_timer.h"
+#include "led_task.h"
 
 // buttons
 #define B1 GPIO_NUM_14
@@ -21,6 +22,7 @@
 uint32_t timerTicks = 14400000; // 4 hrs 
 
 QueueHandle_t interruptHandlerQueue;
+TimerHandle_t xTimer;
 int cnt = 0;
 
 typedef struct
@@ -90,6 +92,7 @@ void motor_start(motor_t *motor, bool start)
         printf("inside starting motor - pin %d = %d\n", motor->gpio_l1_pin, motor->line1_state);
         gpio_set_level(motor->gpio_l1_pin, motor->line1_state);
         gpio_set_level(motor->gpio_l2_pin, motor->line2_state);
+        // light up LED1 
     }
     else // reverse
     {
@@ -218,6 +221,8 @@ void app_main(void)
     init_buttons(NULL);
     gpio_install_isr_service(0);
 
+
+
     interruptHandlerQueue = xQueueCreate(10, sizeof(B1));
     xTaskCreate(buttonListener, "buttonListener", 2048, NULL, 1, NULL);
 
@@ -227,14 +232,14 @@ void app_main(void)
     gpio_set_intr_type(B2, GPIO_INTR_ANYEDGE);
     gpio_isr_handler_add(B2, button_handler, (void *)B2);
 
-
-
-
-
+    gpio_isr_handler_add(C1, button_handler, (void *)C1);
     gpio_isr_handler_add(C2, button_handler, (void *)C2);
 
-    TimerHandle_t xTimer = xTimerCreate("rotation_timer", pdMS_TO_TICKS(timerTicks), true, NULL, on_timer);
+    xTimer = xTimerCreate("rotation_timer", pdMS_TO_TICKS(timerTicks), true, NULL, on_timer);
     xTimerStart(xTimer, 0);
+
+    init_led_strip();
+    set_led(0, 128, 0,0);
 
     // printf("app started %lld\n", esp_timer_get_time()/ 1000) ;
     // TimerHandle_t xTimer = xTimerCreate("mytimer", pdMS_TO_TICKS(1000), true, NULL, on_timer);
