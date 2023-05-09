@@ -17,13 +17,14 @@
 #define C1 GPIO_NUM_35
 #define C2 GPIO_NUM_39
 
-// uint32_t timerTicks = 43200000;
+// uint32_t timerTicks = 300000; // 5 minuts
+uint32_t timerTicks = 3600000; // 1hr
 // uint32_t timerTicks = 1800000; // 30 minutes
-uint32_t timerTicks = 14400000; // 4 hrs 
 
 QueueHandle_t interruptHandlerQueue;
 TimerHandle_t xTimer;
 int cnt = 0;
+int ticks = 0;
 
 typedef struct
 {
@@ -89,13 +90,15 @@ void motor_start(motor_t *motor, bool start)
         motor->line1_state = 1;
         motor->line2_state = 0;
 
-        printf("inside starting motor - pin %d = %d\n", motor->gpio_l1_pin, motor->line1_state);
+        ESP_LOGI("LOG", "starting motor - pin %d = %d\n", motor->gpio_l1_pin, motor->line1_state);
+        // printf("inside starting motor - pin %d = %d\n", motor->gpio_l1_pin, motor->line1_state);
         gpio_set_level(motor->gpio_l1_pin, motor->line1_state);
         gpio_set_level(motor->gpio_l2_pin, motor->line2_state);
-        // light up LED1 
+        // light up LED1
     }
     else // reverse
     {
+        ESP_LOGI("LOG", "reverse starting motor - pin %d = %d\n", motor->gpio_l1_pin, motor->line1_state);
         motor->line1_state = 0;
         motor->line2_state = 1;
         gpio_set_level(motor->gpio_l1_pin, motor->line1_state);
@@ -121,9 +124,6 @@ static void IRAM_ATTR button_handler(void *args)
 void buttonListener(void *params)
 {
     int pinNumber = 0, count = 0;
-    // uint64_t last39detection = 0, last36detection = 0;
-    // uint64_t tmpTime = 0;
-    // static int lastTime = 0;
     while (1)
     {
         if (xQueueReceive(interruptHandlerQueue, &pinNumber, portMAX_DELAY))
@@ -136,34 +136,15 @@ void buttonListener(void *params)
                 {
                     motor_stop(&motor1);
                 }
-                // tmpTime = esp_timer_get_time();
-                // if ((tmpTime - last39detection) / 1000.f > 20.0)
                 // {
-                    printf("-> GPIO %d was pressed. The state is %d\n", pinNumber, gpio_get_level(pinNumber));
-                    //printf("%f -> GPIO %d was pressed %d times. The state is %d\n", (float)esp_timer_get_time() / 1000.f, pinNumber, count++, gpio_get_level(pinNumber));
-                // }
-                // else
-                // {
-                //     printf("%d -> shake detected %f\n", pinNumber, (tmpTime - last39detection) / 1000.f);
-                // }
-                // last39detection = tmpTime;
+                printf("-> GPIO %d was pressed. The state is %d\n", pinNumber, gpio_get_level(pinNumber));
                 break;
             case C2:
                 if (motor1.line2_state)
                 {
                     motor_stop(&motor1);
                 }
-                // tmpTime = esp_timer_get_time();
-                // if ((tmpTime - last36detection) / 1000.f < 20.0)
-                // {
-                    printf("-> GPIO %d was pressed. The state is %d\n", pinNumber, gpio_get_level(pinNumber));
-                    // printf("%d -> shake detected %f\n", pinNumber, (tmpTime - last36detection) / 1000.f);
-                // }
-                // else
-                // {
-                    //printf("%f -> GPIO %d was pressed %d times. The state is %d\n", (float)esp_timer_get_time() / 1000.f, pinNumber, count++, gpio_get_level(pinNumber));
-                // }
-                // last36detection = tmpTime;
+                printf("-> GPIO %d was pressed. The state is %d\n", pinNumber, gpio_get_level(pinNumber));
                 break;
             case B1:
                 printf("%f -> GPIO %d was pressed %d times. The state is %d\n", (float)esp_timer_get_time() / 1000.f, pinNumber, count++, gpio_get_level(pinNumber));
@@ -180,7 +161,6 @@ void buttonListener(void *params)
                         printf("starting motor reverse\n");
                         motor_start(&motor1, false);
                     }
-                    // motor_start(&motor1);
                 }
                 break;
             case B2:
@@ -202,26 +182,32 @@ void on_reverse(TimerHandle_t xTimer)
 
 void on_timer(TimerHandle_t xTimer)
 {
-    // fire on every (n) ticks thorugh
-    ESP_LOGI("LOG", "motor started");
-    motor_start(&motor1, true);
-    TimerHandle_t xTimer2 = xTimerCreate("rotation_timer", pdMS_TO_TICKS(60000), false, NULL, on_reverse);
-    xTimerStart(xTimer2, 0);
+    ESP_LOGI("LOG", "tick %d\n", ticks);
+    if (++ticks == 12)
+    {
+        // fire on every (n) ticks thorugh
+        ESP_LOGI("LOG", "motor started");
+        motor_start(&motor1, true);
+        TimerHandle_t xTimer2 = xTimerCreate("rotation_timer", pdMS_TO_TICKS(60000), false, NULL, on_reverse);
+        xTimerStart(xTimer2, 0);
+        ticks = 0;
+    }
 }
 
 void app_main(void)
 {
+
     esp_log_level_set("LOG", ESP_LOG_INFO);
     ESP_LOGI("LOG", "this is a informative");
     ESP_LOGE("LOG", "this is an error");
-    ESP_LOGW("LOG", "this is a warning");
-    ESP_LOGV("LOG", "this is verbose");
-    printf("hello world\n");
-
+    ESP_LOGW("LOG", "this is a Version 0.5.x %d", timerTicks);
+    uint32_t wizard;
+    // wizard = pdMS_TO_TICKS(1000);
+    // ESP_LOGW("LOG", "this is ticks for 1000 ms %d\n", wizard);
+    wizard = pdMS_TO_TICKS(timerTicks);
+    ESP_LOGW("LOG", "this is ticks for 1hr %d\n", wizard);
     init_buttons(NULL);
     gpio_install_isr_service(0);
-
-
 
     interruptHandlerQueue = xQueueCreate(10, sizeof(B1));
     xTaskCreate(buttonListener, "buttonListener", 2048, NULL, 1, NULL);
@@ -239,9 +225,6 @@ void app_main(void)
     xTimerStart(xTimer, 0);
 
     init_led_strip();
-    set_led(0, 128, 0,0);
+    set_led(0, 0, 128, 0);
 
-    // printf("app started %lld\n", esp_timer_get_time()/ 1000) ;
-    // TimerHandle_t xTimer = xTimerCreate("mytimer", pdMS_TO_TICKS(1000), true, NULL, on_timer);
-    // xTimerStart(xTimer, 0);
 }
